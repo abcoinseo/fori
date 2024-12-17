@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Single-Line Messenger with File Sharing</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background-color: #f4f4f4;
+    }
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      max-width: 600px;
+      height: 95vh;
+      background-color: #fff;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+    }
+    .message-container {
+      flex-grow: 1;
+      overflow-y: auto;
+      padding: 10px;
+      background-color: #fafafa;
+      box-sizing: border-box;
+    }
+    .message {
+      background-color: #e9f6ff;
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 8px;
+      white-space: nowrap; /* Single-line messages */
+      overflow: hidden;
+      text-overflow: ellipsis; /* Show "..." for long text */
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .username {
+      font-weight: bold;
+      color: #007BFF;
+      margin-right: 10px;
+    }
+    .emoji-buttons {
+      display: flex;
+      gap: 5px;
+    }
+    .emoji-buttons button {
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 18px;
+    }
+    .emoji-buttons button:disabled {
+      color: #ccc;
+    }
+    .input-container {
+      display: flex;
+      padding: 10px;
+      background-color: #f9f9f9;
+    }
+    input[type="text"] {
+      flex-grow: 1;
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #ddd;
+      margin-right: 10px;
+    }
+    #sendButton {
+      background-color: #007BFF;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    input[type="file"] {
+      display: none;
+    }
+    label {
+      background-color: #007BFF;
+      color: white;
+      padding: 10px 15px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-left: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <div class="message-container" id="messageContainer"></div>
+    <div class="input-container">
+      <input type="text" id="messageInput" placeholder="Type a message...">
+      <label for="fileInput">📎</label>
+      <input type="file" id="fileInput" onchange="handleFileSelect()">
+      <button id="sendButton">Send</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+    import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-database.js";
+    import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-storage.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBQMke0SOMIq0rod6vOm4jrFJ4cExfJPNE",
+      authDomain: "ab-studio-4c309.firebaseapp.com",
+      databaseURL: "https://ab-studio-4c309-default-rtdb.firebaseio.com",
+      projectId: "ab-studio-4c309",
+      storageBucket: "ab-studio-4c309.appspot.com",
+      messagingSenderId: "290321392308",
+      appId: "1:290321392308:web:eed8f4bda17a51944eade1"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const storage = getStorage(app);
+
+    const messageContainer = document.getElementById('messageContainer');
+    const messageInput = document.getElementById('messageInput');
+    const sendButton = document.getElementById('sendButton');
+    const fileInput = document.getElementById('fileInput');
+
+    const groupId = 'group1';
+    const messagesRef = ref(db, `groups/${groupId}/messages`);
+
+    let username = localStorage.getItem('username');
+    if (!username) {
+      username = prompt("Enter your username:");
+      localStorage.setItem('username', username);
+    }
+
+    // Handle File Selection
+    let fileUrl = '';
+    function handleFileSelect() {
+      const file = fileInput.files[0];
+      if (file) {
+        const storagePath = `uploads/${file.name}`;
+        const fileRef = storageRef(storage, storagePath);
+        uploadBytes(fileRef, file).then((snapshot) => {
+          getDownloadURL(fileRef).then((url) => {
+            fileUrl = url;
+            alert("File uploaded successfully.");
+          });
+        }).catch((error) => {
+          console.error("Error uploading file: ", error);
+        });
+      }
+    }
+
+    // Send Message
+    sendButton.addEventListener('click', () => {
+      const messageText = messageInput.value.trim();
+      if (messageText || fileUrl) {
+        const timestamp = Date.now();
+        set(ref(db, `groups/${groupId}/messages/${timestamp}`), {
+          username: username,
+          message: messageText,
+          fileUrl: fileUrl || null,
+          likes: 0
+        });
+        messageInput.value = '';
+        fileInput.value = ''; // Reset file input after sending
+        fileUrl = ''; // Reset file URL
+      }
+    });
+
+    // Real-time Message Listener
+    onValue(messagesRef, (snapshot) => {
+      messageContainer.innerHTML = '';
+      snapshot.forEach(childSnapshot => {
+        const key = childSnapshot.key;
+        const data = childSnapshot.val();
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message';
+
+        messageDiv.innerHTML = `
+          <div>
+            <span class="username">${data.username}</span> ${data.message}
+            ${data.fileUrl ? `<br><a href="${data.fileUrl}" target="_blank">Download File</a>` : ''}
+          </div>
+          <div class="emoji-buttons">
+            <button onclick="likeMessage('${key}')">👍</button>
+            <span id="like-${key}">${data.likes || 0}</span>
+          </div>
+        `;
+
+        messageContainer.appendChild(messageDiv);
+      });
+      messageContainer.scrollTop = messageContainer.scrollHeight;
+    });
+
+    // Like System
+    window.likeMessage = (messageId) => {
+      const messageRef = ref(db, `groups/${groupId}/messages/${messageId}`);
+      update(messageRef, { likes: (parseInt(document.getElementById(`like-${messageId}`).textContent) + 1) });
+    };
+  </script>
+</body>
+</html>
